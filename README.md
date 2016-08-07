@@ -18,3 +18,6 @@ from breeze import click
 # clicks button named 'Click Me!'
 click("Click Me!")
 ```
+
+# used by
+[First Draft GIS](http://firstdraftgis.com)
