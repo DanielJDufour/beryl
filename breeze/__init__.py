@@ -56,3 +56,6 @@ def click_text(name):
 
 
 click = click_text
+
+def notify(text):
+    call(["notify-send", "'"+text+"'"])
