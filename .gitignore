@@ -89,3 +89,6 @@ ENV/
 .ropeproject
 
 *bak*
+*swp*
+*swn*
+*swo*
