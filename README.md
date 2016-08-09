@@ -6,7 +6,9 @@ This package works by taking a screenshot of your screen, using opencv to extrac
 
 
 # requirements
+ffmpeg
 gnome-screenshot
+recordmydesktop
 python-opencv
 tesseract-ocr
 xdotool

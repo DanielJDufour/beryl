@@ -7,6 +7,7 @@ from PIL.PngImagePlugin import PngImageFile
 from pytesseract import image_to_string
 from subprocess import call, Popen
 from time import sleep
+from recorder import record
 
 # notes
 # probably need some sort of caching mechanism
