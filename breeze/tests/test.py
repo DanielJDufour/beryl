@@ -3,6 +3,13 @@ from datetime import datetime
 from breeze import *
 from time import sleep
 
+class TestNotify(unittest.TestCase):
+
+    @record("/tmp/test_method.gif")
+    @notify
+    def test_method(self):
+        sleep(3)
+
 class TestButtonClickingMethods(unittest.TestCase):
 
     def test_click_untitled_document(self):
