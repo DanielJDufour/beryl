@@ -2,18 +2,21 @@
 Makes Writing Tests A Breeze
 
 # explanation
-This package works by taking a screenshot of your screen, using opencv to extract contours, getting text for different areas with pytesseract, using editdistance to find text that is within 1 letter, and xdotool to click that location with the passed-in text
+This package works by using machine vision, optical character recognition, levenshtein distance and some custom code.
 
 
 # requirements
-ffmpeg
-gnome-screenshot
-recordmydesktop
-python-opencv
-tesseract-ocr
-xdotool
+On Ubuntu or any system using Apt Package Manager, install the required system-level packages with the following:
+```
+sudo apt-get install ffmpeg gnome-screenshot recordmydesktop python-opencv tesseract-ocr xdotool
+```
+On any system with PIP installed, install the Python packages with the following:
+```
+sudo pip install editdistance Pillow pytesseract
+```
 
-# example
+# examples
+![gif showing click in action](https://raw.githubusercontent.com/DanielJDufour/breeze/master/gifs/clickbutton.gif)
 ```
 from breeze import click
 
