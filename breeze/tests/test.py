@@ -6,10 +6,12 @@ from time import sleep
 class TestButtonClickingMethods(unittest.TestCase):
 
     def test_click_untitled_document(self):
-        click_button("Untitled Document")
+        click("Untitled Document")
 
-    def test_click_next(self):
-        click_text("Next")
+    @record("/tmp/clickbutton.gif")
+    def test_click_button(self):
+        click("Click Me!")
+        sleep(5)
 
 class TestRecording(unittest.TestCase):
 

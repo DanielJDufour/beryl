@@ -1,4 +1,5 @@
 import cv2, editdistance, numpy
+from collections import defaultdict
 from datetime import datetime
 from math import sqrt
 from numpy import mean, median
@@ -18,6 +19,15 @@ from recorder import record
 
 
 # maybe need to train on an image before search for it
+
+def area_of_box(box):
+    print "area_of_box started with"
+    #print "\t", box
+    #print "\t", x
+    #raw_input()
+    w = box[1][0] - box[0][0]
+    h = box[2][1] - box[1][1]
+    return w * h
 
 def is_text_on_screen(target, notify=True):
 
@@ -52,8 +62,8 @@ def click_text(name, notify=True):
 
     if notify:
         _notify("starting to click " + name) 
+        sleep(2)
 
-    sleep(2)
 
     #GET SCREENSHOT
     call(["gnome-screenshot", "--file=/tmp/breeze.png"])
@@ -62,38 +72,86 @@ def click_text(name, notify=True):
     #FIND LOCATION OF NAME
     im = cv2.imread('/tmp/breeze.png')
     imgray = cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
-    ret,thresh = cv2.threshold(imgray,127,255,0)
-    contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    #cv2.imwrite('/tmp/imgray.png',imgray)
+    ret,thresh = cv2.threshold(imgray,127,255,cv2.THRESH_BINARY)
+    #ret, thresh = cv2.adaptiveThreshold(img,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,11,2)
+    #cv2.imwrite('/tmp/thresh.png',thresh)
+    #contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
+    hierarchy = hierarchy.tolist()[0] # converting from ndarry to list
+    #print("hierarchy", hierarchy)
+    boxes = []
+    parent_children = defaultdict(list)
+    for index, contour in enumerate(contours):
+        x,y,w,h = cv2.boundingRect(contour)
+        box = [[x,y],[x+w,y],[x,y+h],[x+w,y+h]]
+        boxes.append(box)
+        parent_children[hierarchy[index][3]].append(box)
+
+    #print "len after beginning;", len(boxes)
+
+    for parent in parent_children:
+        #print "parent:", parent
+        children = parent_children[parent]
+        while len(children) > 1:
+            #print "\t#children:", len(children)
+            min_distance = None
+            pair = None
+            for box1 in children:
+                for box2 in children:
+                    if box1 != box2:
+                        d = distance_between_boxes(box1, box2)
+                        if min_distance is None or d < min_distance:
+                            min_distance = d
+                            pair = (box1, box2)
+                            new_box = merge_boxes(box1, box2)
+            #print "new_box:", new_box
+            boxes.append(new_box)
+            children.append(new_box)
+            children.remove(pair[0])
+            children.remove(pair[1])
+
+    #print("len after mergin:", len(boxes))
+
+    #print "boxes:", boxes
+    #boxes.sort(area_of_box) # go from smallest to biggest
+    boxes = sorted(boxes, key=lambda box: area_of_box(box))
+    
     found_location = None
     d = {}
-    for index, contour in enumerate(contours):
-        location = cv2.boundingRect(contour)
-        x,y,w,h = location
-        if w > 10 and h > 6:
+    for index, box in enumerate(boxes):
+        w = box[1][0] - box[0][0]
+        h = box[2][1] - box[1][1]
+        if 10 < w < 500 and 6 < h < 500:
             cropped = im[y:y+h, x:x+w]
-            text = image_to_string(Image.fromarray(cropped))
+            # also try is with a pad of 2 pixels
+            text = image_to_string(Image.fromarray(cropped)) or image_to_string(Image.fromarray(im[y-2:y+h+4, x-2:x+w+4]))
+            #print "text:", text
             if text:
                 if text == name:
-                    found_location = location
+                    found_location = box
                     break
                 else:
-                    d[text] = {"location": location, "text": text}
+                    d[text] = {"location": box, "text": text}
 
     #print "FOUND", name, "at", found_location
     if not found_location:
-        for text in d:
-            d[text]['distance'] = editdistance.eval(text, name)
+        if d:
+            for text in d:
+                d[text]['distance'] = editdistance.eval(text, name)
 
-        #print "d:", d
-        found_location = (sorted(d.iteritems(), key=lambda tup:tup[1]['distance'] ) or [None])[0][1]['location']
+            #print "d:", d
+            found_location = (sorted(d.iteritems(), key=lambda tup:tup[1]['distance'] ) or [None])[0][1]['location']
+        else:
+            found_location = None
 
     #print "FOUND_LOCATION:", found_location
  
 
     #CLICK THAT LOCATION
     if found_location:
-        x = found_location[0] + (float(found_location[2]) / 2)
-        y = found_location[1] + (float(found_location[3]) / 2)
+        x = float(found_location[1][0] + found_location[0][0]) / 2
+        y = float(found_location[2][1] + found_location[1][1]) / 2
         click_location((x,y))
 
     if notify:
@@ -167,8 +225,43 @@ def click(x, notify=False):
     elif isinstance(x, tuple):
         click_location(x,notify=notify)
 
+def contour_to_rectangle_points(contour1, contour2):
+    x,y,w,h = cv2.boundingRect(contour)
+    return [[x,y],[x+w,y],[x,y+h],[x+w,y+h]]
+
 def distance(p0, p1):
     return sqrt((p0[0] - p1[0])**2 + (p0[1] - p1[1])**2)
+
+def distance_between_boxes(box1, box2):
+    min_distance = None
+    for point1 in box1:
+        for point2 in box2:
+            d = distance(point1, point2)
+            if min_distance:
+                if d < min_distance:
+                    min_distance = d
+            else:
+                min_distance = d
+    return min_distance
+
+def merge_boxes(box1, box2):
+    xmin = min(box1[0][0], box2[0][0])
+    xmax = max(box1[1][0], box2[1][0])
+    ymin = min(box1[0][1], box2[0][1])
+    ymax = max(box1[2][1], box2[2][1])
+    return [[xmin,ymin],[xmax,ymin],[xmax,ymax],[xmin,ymax]]
+
+def distance_btw_contours(contour1, contour2):
+    min_distance = None
+    for point1 in contour1:
+        for point2 in contour2:
+            d = distance(contour1[0][0], contour2[0][0])
+            if min_distance:
+                if d < min_distance:
+                    min_distance = d
+            else:
+                min_distance = d
+    return min_distance
 
 def avg_distance(point, points):
     return median([distance(point, other_point) for other_point in points])
