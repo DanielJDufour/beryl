@@ -30,7 +30,7 @@ click("Click Me!")
 ```
 from breeze import notify
 
-# notifies you when method has started and finished
+# notifies you when method starts and ends
 @notify
 def test_method():
     sleep(3)
