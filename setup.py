@@ -4,7 +4,7 @@ setup(
   name = 'breeze',
   packages = ['breeze'],
   package_dir = {'breeze': 'breeze'},
-  package_data = {'breeze': ['__init__.py']},
+  package_data = {'breeze': ['__init__.py','recorder.py']},
   version = '0.1',
   description = 'Makes Writing Tests A Breeze',
   author = 'Daniel J. Dufour',
