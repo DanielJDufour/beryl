@@ -1,9 +1,13 @@
 # btest
-Makes Writing Tests Super Easy and Quick
+btest makes writing tests better, super easy and quick
 
 # explanation
 This package works by using machine vision, optical character recognition, levenshtein distance and some custom code.
 
+# install
+```
+pip install btest
+```
 
 # requirements
 On Ubuntu or any system using Apt Package Manager, install the required system-level packages with the following:
