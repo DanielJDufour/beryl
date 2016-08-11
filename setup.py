@@ -6,7 +6,7 @@ setup(
   package_dir = {'dust': 'dust'},
   package_data = {'dust': ['__init__.py','recorder.py']},
   version = '0.3',
-  description = 'Makes Writing Tests A Breeze',
+  description = 'Makes Writing Tests Super Easy and Quick',
   author = 'Daniel J. Dufour',
   author_email = 'daniel.j.dufour@gmail.com',
   url = 'https://github.com/DanielJDufour/dust',
