@@ -38,11 +38,11 @@ def is_text_on_screen(target, notify=True):
         target = target.decode('utf-8')
 
     #GET SCREENSHOT
-    call(["gnome-screenshot", "--file=/tmp/dust.png"])
+    call(["gnome-screenshot", "--file=/tmp/btest.png"])
     sleep(1)
 
     #FIND TEXTS
-    im = cv2.imread('/tmp/dust.png')
+    im = cv2.imread('/tmp/btest.png')
     im = cv2.resize(im, (0,0), fx=2, fy=2)
     imgray = cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
     #ret,thresh = cv2.threshold(imgray,127,255,0)
@@ -66,11 +66,11 @@ def click_text(name, notify=True):
 
 
     #GET SCREENSHOT
-    call(["gnome-screenshot", "--file=/tmp/dust.png"])
+    call(["gnome-screenshot", "--file=/tmp/btest.png"])
     sleep(1)
 
     #FIND LOCATION OF NAME
-    im = cv2.imread('/tmp/dust.png')
+    im = cv2.imread('/tmp/btest.png')
     imgray = cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
     #cv2.imwrite('/tmp/imgray.png',imgray)
     ret,thresh = cv2.threshold(imgray,127,255,cv2.THRESH_BINARY)
@@ -170,11 +170,11 @@ def click_image(image, notify=True):
     sleep(2)
 
     #GET SCREENSHOT
-    call(["gnome-screenshot", "--file=/tmp/dust.png"])
+    call(["gnome-screenshot", "--file=/tmp/btest.png"])
     sleep(1)
 
     #FIND LOCATION OF NAME
-    source = cv2.imread('/tmp/dust.png', 0)
+    source = cv2.imread('/tmp/btest.png', 0)
 
     points = []
     w, h = template.shape[::-1] 

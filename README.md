@@ -1,4 +1,4 @@
-# dust
+# btest
 Makes Writing Tests Super Easy and Quick
 
 # explanation
@@ -17,17 +17,17 @@ sudo pip install editdistance Pillow pytesseract
 
 # examples
 ## click
-![gif showing click in action](https://raw.githubusercontent.com/DanielJDufour/dust/master/gifs/clickbutton.gif)
+![gif showing click in action](https://raw.githubusercontent.com/DanielJDufour/btest/master/gifs/clickbutton.gif)
 ```
-from dust import click
+from btest import click
 
 # clicks any button on screen named 'Click Me!'
 click("Click Me!")
 ```
 ## notify
-![gif showing notify in action](https://raw.githubusercontent.com/DanielJDufour/dust/master/gifs/notify.gif)
+![gif showing notify in action](https://raw.githubusercontent.com/DanielJDufour/btest/master/gifs/notify.gif)
 ```
-from dust import notify
+from btest import notify
 from time import sleep
 
 # notifies you when a method is starting and finishing
@@ -38,7 +38,7 @@ def test_method():
 
 ##record
 ```
-from dust import record
+from btest import record
 from time import sleep
 
 # records the screen when your method is running
