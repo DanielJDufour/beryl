@@ -1,5 +1,5 @@
-# breeze
-Makes Writing Tests A Breeze
+# dust
+Makes Writing Tests Super Easy and Quick
 
 # explanation
 This package works by using machine vision, optical character recognition, levenshtein distance and some custom code.
@@ -17,17 +17,17 @@ sudo pip install editdistance Pillow pytesseract
 
 # examples
 ## click
-![gif showing click in action](https://raw.githubusercontent.com/DanielJDufour/breeze/master/gifs/clickbutton.gif)
+![gif showing click in action](https://raw.githubusercontent.com/DanielJDufour/dust/master/gifs/clickbutton.gif)
 ```
-from breeze import click
+from dust import click
 
 # clicks any button on screen named 'Click Me!'
 click("Click Me!")
 ```
 ## notify
-![gif showing notify in action](https://raw.githubusercontent.com/DanielJDufour/breeze/master/gifs/notify.gif)
+![gif showing notify in action](https://raw.githubusercontent.com/DanielJDufour/dust/master/gifs/notify.gif)
 ```
-from breeze import notify
+from dust import notify
 from time import sleep
 
 # notifies you when a method is starting and finishing
@@ -38,13 +38,14 @@ def test_method():
 
 ##record
 ```
-from breeze import record
+from dust import record
 from time import sleep
 
 # records the screen when your method is running
 @record
 def test_method():
     sleep(3)
-    
+```
+ 
 # used by
 [First Draft GIS](http://firstdraftgis.com)

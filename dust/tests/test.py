@@ -1,6 +1,6 @@
 import unittest
 from datetime import datetime
-from breeze import *
+from dust import *
 from time import sleep
 
 class TestNotify(unittest.TestCase):

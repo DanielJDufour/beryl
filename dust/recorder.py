@@ -12,7 +12,7 @@ def convert(input_path, output_path, async=False, silent=True):
     else:
         call(_args)
 
-def start(path_to_video="/tmp/breeze_recording.ogv", silent=True):
+def start(path_to_video="/tmp/dust_recording.ogv", silent=True):
     _args = ["recordmydesktop","-o",path_to_video]
     return Popen(_args)
 
