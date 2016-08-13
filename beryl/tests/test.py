@@ -1,6 +1,6 @@
 import unittest
 from datetime import datetime
-from btest import *
+from beryl import *
 from time import sleep
 
 class TestNotify(unittest.TestCase):

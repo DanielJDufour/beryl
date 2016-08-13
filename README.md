@@ -1,12 +1,12 @@
-# btest
-btest makes writing tests better, super easy and quick
+# beryl
+beryl makes writing tests better, super easy and quick
 
 # explanation
 This package works by using machine vision, optical character recognition, levenshtein distance and some custom code.
 
 # install
 ```
-pip install btest
+pip install beryl
 ```
 
 # requirements
@@ -21,17 +21,17 @@ sudo pip install editdistance Pillow pytesseract
 
 # examples
 ## click
-![gif showing click in action](https://raw.githubusercontent.com/DanielJDufour/btest/master/gifs/clickbutton.gif)
+![gif showing click in action](https://raw.githubusercontent.com/DanielJDufour/beryl/master/gifs/clickbutton.gif)
 ```
-from btest import click
+from beryl import click
 
 # clicks any button on screen named 'Click Me!'
 click("Click Me!")
 ```
 ## notify
-![gif showing notify in action](https://raw.githubusercontent.com/DanielJDufour/btest/master/gifs/notify.gif)
+![gif showing notify in action](https://raw.githubusercontent.com/DanielJDufour/beryl/master/gifs/notify.gif)
 ```
-from btest import notify
+from beryl import notify
 from time import sleep
 
 # notifies you when a method is starting and finishing
@@ -42,7 +42,7 @@ def test_method():
 
 ##record
 ```
-from btest import record
+from beryl import record
 from time import sleep
 
 # records the screen when your method is running
