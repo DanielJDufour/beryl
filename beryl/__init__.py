@@ -2,10 +2,12 @@ import cv2, editdistance, numpy
 from collections import defaultdict
 from datetime import datetime
 from math import sqrt
-from numpy import mean, median
+from numpy import amin, argmin, asarray, mean, median, sum, triu_indices
+import numpy as np
 from PIL import Image, ImageOps
 from PIL.PngImagePlugin import PngImageFile
 from pytesseract import image_to_string
+from scipy.spatial.distance import cdist, pdist
 from subprocess import call, Popen
 from time import sleep
 from recorder import record
@@ -26,11 +28,13 @@ class Box:
         self.ymin = ymin
         self.width = width
         self.height = height
-        self.xmax = xmin + width
-        self.ymax = ymin + height
+        self.xmax = xmax = xmin + width
+        self.ymax = ymax = ymin + height
         self.area = width * height
-        self.xmid = float(self.xmax + xmin) / 2
-        self.ymid = float(self.ymax + ymin) / 2
+        self.xmid = xmid = float(xmax + xmin) / 2
+        self.ymid = ymid = float(ymax + ymin) / 2
+        self.points = [[xmin,ymin],[xmax,ymin],[xmax,ymax],[xmin,ymax]]
+        self.node = asarray([xmid, ymid])
 
 def getGoodImage(image):
 
@@ -96,12 +100,13 @@ def is_text_on_screen(target, notify=True):
 
 def click_text(name, notify=True, use_cache=True):
 
+    print "starting click_text with", name
+
     if notify:
         _notify("starting to click " + name) 
         sleep(1)
         call(["killall","notify-osd"])
         sleep(1)
-
 
     #GET SCREENSHOT
     call(["gnome-screenshot", "--file=/tmp/beryl.png"])
@@ -114,14 +119,14 @@ def click_text(name, notify=True, use_cache=True):
     ret,thresh = cv2.threshold(imgray,127,255,cv2.THRESH_BINARY)
     #ret,thresh = cv2.threshold(imgray,127,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C)
     #ret, thresh = cv2.adaptiveThreshold(imgray,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,11,2)
+    #cv2.imwrite('/tmp/thresh.png',thresh)
+    contours, hierarchy = cv2.findContours(thresh.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
     cv2.imwrite('/tmp/thresh.png',thresh)
-    contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
     #contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
     #cv2.drawContours(im, contours, -1, (255, 255, 0), 3)
     #cv2.imshow("Keypoints", im)
     #cv2.waitKey(0)
     hierarchy = hierarchy.tolist()[0] # converting from ndarry to list
-    #print("hierarchy", hierarchy)
     boxes = []
     parent_children = defaultdict(list)
     for index, contour in enumerate(contours):
@@ -131,30 +136,29 @@ def click_text(name, notify=True, use_cache=True):
 
     print "len after beginning;", len(boxes)
 
-    """
     time_started_merging = datetime.now()
     for parent in parent_children:
         #print "parent:", parent
         children = parent_children[parent]
+        number_of_children = len(children)
+        print "number_of_children:", number_of_children
         while len(children) > 1:
-            #print "\t#children:", len(children)
-            min_distance = None
-            pair = None
-            for box1 in children:
-                for box2 in children:
-                    if box1 != box2:
-                        d = distance_between_boxes(box1, box2)
-                        if min_distance is None or d < min_distance:
-                            min_distance = d
-                            pair = (box1, box2)
-                            new_box = merge_boxes(box1, box2)
-            #print "new_box:", new_box
+            number_of_children = len(children)
+            nodes = [child.node for child in children]
+
+            # wow numpy to the rescue!
+            a = argmin(pdist(nodes, 'euclidean'))
+            #n = sqrt(2*number_of_children)
+            ti = triu_indices(number_of_children, 1)
+            box1 = children[ti[0][a]]
+            box2 = children[ti[1][a]]
+           
+            new_box = merge_boxes(box1,box2)
             boxes.append(new_box)
             children.append(new_box)
-            children.remove(pair[0])
-            children.remove(pair[1])
+            children.remove(box1)
+            children.remove(box2)
     print "merging took", (datetime.now()-time_started_merging).total_seconds(), "seconds"
-    """
 
     #print("len after mergin:", len(boxes))
 
@@ -169,37 +173,51 @@ def click_text(name, notify=True, use_cache=True):
     print "minimum width:", minimum_width
     print "number of boxes:", len(boxes)
     for index, box in enumerate(boxes):
-        #print "...", index,
         # ignore if data all one color
 
-        #Image.fromarray(thresh[box.ymin-2:box.ymax+4, box.xmin-2:box.xmax+4]).save("/tmp/beryl_" + str(index) + ".png")
-
         if minimum_width < box.width < 500 and 15 < box.height < 500:
-            print "box", index, "passed"
-            #cropped = im[y:y+h, x:x+w]
-            # also try is with a pad of 2 pixels
-            #text  = image_to_string(Image.fromarray(cropped)) or image_to_string(Image.fromarray(im[y-2:y+h+4, x-2:x+w+4]))
-            #text = image_to_string(Image.fromarray(im[y-2:y+h+4, x-2:x+w+4]))
-            #image = Image.fromarray(thresh[box.ymin-2:box.ymax+4, box.xmin-2:box.xmax+4])
-            path_to_image = "/tmp/thresh_"+str(index)+".png"
-            cv2.imwrite(path_to_image, thresh[box.ymin-2:box.ymax+4, box.xmin-2:box.xmax+4])
-            cv2.imwrite(path_to_image, im[box.ymin-2:box.ymax+4, box.xmin-2:box.xmax+4])
-            image = Image.open(path_to_image)
+            print "\tBOX", index, "PASSED",
+            impath = "/tmp/"+str(index)+".png"
+            xmax = box.xmax 
+            xmin = box.xmin 
+            ymax = box.ymax
+            ymin = box.ymin 
+            text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) 
+            if not text:
+                text = image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax])) 
+                if not text:
 
-            #if is_there_more_than_one_color(image.getdata()):
-            #    print "more than one color"
+                    # pad coordinates by 2 pixels
+                    if xmax <= box.width - 2: xmax += 2
+                    if xmin >= 2: xmin -= 2
+                    if ymin >= 2: ymin -= 2
+                    if ymax <= box.height - 2: ymax += 2
+
+                    if not text:
+                        text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) 
+                        if not text:
+                            text = image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax])) 
+                        #else:
+                        #    cv2.imwrite(impath,thresh[ymin:ymax, xmin:xmax])
+                    #else:
+                    #    cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax]) 
+                #else:
+                #    cv2.imwrite(impath,thresh[ymin:ymax, xmin:xmax]) 
             #else:
-            #    print "only 1 color, skip it"
-            text = image_to_string(image) or image_to_string(ImageOps.invert(image))
-            #text = image_to_string(Image.fromarray(im[box.ymin-2:box.ymax+4, box.xmin-2:box.xmax+4])) or 
+            #    cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax]) 
+ 
+            #if is_there_more_than_one_color(image.getdata()):
+            #or image_to_string(ImageOps.invert(image))
             print "text:", text
             if text:
+                box.text = text
                 if text == name:
                     found = box
                     break
                 else:
-                    box.text = text
                     d[text] = box
+        else:
+            print "\tBOX", index, "FAILED",
 
     if not found:
         if d:
@@ -212,8 +230,7 @@ def click_text(name, notify=True, use_cache=True):
             found = None
     else: print "FOUND", name
 
-    _notify("FINISHED WITH BOX " + found.text)
-    raw_input()
+    _notify("FOUND " + found.text)
  
 
     #CLICK THAT LOCATION
@@ -295,13 +312,21 @@ def contour_to_rectangle_points(contour1, contour2):
     x,y,w,h = cv2.boundingRect(contour)
     return [[x,y],[x+w,y],[x,y+h],[x+w,y+h]]
 
+
+# doesn't return the true distance
+# to get that you would take the sqrt of whatever is returned
+# this shortcut saves us 13 seconds when running merge on 600 boxes
 def distance(p0, p1):
+    #return (p0[0] - p1[0])**2 + (p0[1] - p1[1])**2
     return sqrt((p0[0] - p1[0])**2 + (p0[1] - p1[1])**2)
 
+# as a shortcut, basically calculate distance between midpoints
+# this saves us 30 seconds when merging 600 boxes
 def distance_between_boxes(box1, box2):
+    """
     min_distance = None
-    for point1 in box1:
-        for point2 in box2:
+    for point1 in box1.points:
+        for point2 in box2.points:
             d = distance(point1, point2)
             if min_distance:
                 if d < min_distance:
@@ -309,25 +334,22 @@ def distance_between_boxes(box1, box2):
             else:
                 min_distance = d
     return min_distance
+    """ 
+    return distance([box1.xmid, box1.ymid],[box2.xmid, box2.ymid])
+    # numpy method is actually slower at takes 102 seconds
+    #np.linalg.norm(box1.node-box2.node)
+    #return np.sum((box1.node-box2.node)**2,axis=0)
+    # this takes 60 seconds
+    
 
 def merge_boxes(box1, box2):
-    xmin = min(box1[0][0], box2[0][0])
-    xmax = max(box1[1][0], box2[1][0])
-    ymin = min(box1[0][1], box2[0][1])
-    ymax = max(box1[2][1], box2[2][1])
-    return [[xmin,ymin],[xmax,ymin],[xmax,ymax],[xmin,ymax]]
-
-def distance_btw_contours(contour1, contour2):
-    min_distance = None
-    for point1 in contour1:
-        for point2 in contour2:
-            d = distance(contour1[0][0], contour2[0][0])
-            if min_distance:
-                if d < min_distance:
-                    min_distance = d
-            else:
-                min_distance = d
-    return min_distance
+    xmin = min(box1.xmin, box2.xmin)
+    xmax = max(box1.xmax, box2.xmax)
+    ymin = min(box1.ymin, box2.ymin)
+    ymax = max(box1.ymax, box2.ymax)
+    width = xmax - xmin
+    height = ymax - ymin
+    return Box((xmin, ymin, width, height))
 
 def avg_distance(point, points):
     return median([distance(point, other_point) for other_point in points])

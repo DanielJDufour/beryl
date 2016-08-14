@@ -1,7 +1,27 @@
 import unittest
 from datetime import datetime
 from beryl import *
+from os.path import abspath, dirname
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from settings import *
 from time import sleep
+
+path_to_this_directory = dirname(abspath(__file__))
+
+def setUpModule():
+    global driver
+
+    print "starting setUpModule"
+    call( [ "killall", "-9", "chrome" ] )
+    options = Options()
+    options.add_extension(path_to_chrome_extension)
+    options.add_argument("--start-maximized")
+    driver = webdriver.Chrome(executable_path=path_to_chrome_driver, chrome_options=options)
+
+def tearDownModule():
+    #global driver
+    driver.quit() 
 
 class TestNotify(unittest.TestCase):
 
@@ -15,8 +35,11 @@ class TestButtonClickingMethods(unittest.TestCase):
     def test_click_untitled_document(self):
         click("Untitled Document")
 
-    @record("/tmp/clickbutton.gif")
+    #@record("/tmp/clickbutton.gif")
     def test_click_button(self):
+        path_to_example = path_to_this_directory + "/examples/click_me_test.html"
+        driver.get("file://" + path_to_example)
+        sleep(2)
         click("Click Me!")
         sleep(5)
 
