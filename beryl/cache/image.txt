@@ -1,0 +1,1 @@
+#hash	xmin	ymin	xmax	ymax

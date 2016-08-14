@@ -4,6 +4,7 @@ from datetime import datetime
 from math import sqrt
 from numpy import amin, argmin, asarray, mean, median, sum, triu_indices
 import numpy as np
+from os.path import abspath, dirname
 from PIL import Image, ImageOps
 from PIL.PngImagePlugin import PngImageFile
 from pytesseract import image_to_string
@@ -19,8 +20,14 @@ from recorder import record
 # maybe look at old location first and if don't find
 # there, then run again??
 
+path_to_this_directory = dirname(abspath(__file__))
+path_to_cache_directory = path_to_this_directory + "/cache/"
+path_to_cache_image = path_to_cache_directory + "image.txt"
+path_to_cache_text = path_to_cache_directory + "text.txt"
 
 # maybe need to train on an image before search for it
+global cache
+cache = {}
 
 class Box:
     def __init__(self, (xmin, ymin, width, height)):
@@ -99,8 +106,15 @@ def is_text_on_screen(target, notify=True):
                 return True
 
 def click_text(name, notify=True, use_cache=True):
+    global cache
+
+    write_to_cache = False
+    found = None
 
     print "starting click_text with", name
+    time_started_method = datetime.now()
+
+    loadCacheTextIfNecessary()
 
     if notify:
         _notify("starting to click " + name) 
@@ -110,114 +124,130 @@ def click_text(name, notify=True, use_cache=True):
 
     #GET SCREENSHOT
     call(["gnome-screenshot", "--file=/tmp/beryl.png"])
-    sleep(1)
+    sleep(0.5)
 
     #FIND LOCATION OF NAME
-    im = cv2.imread('/tmp/beryl.png')
-    imgray = cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
-    cv2.imwrite('/tmp/imgray.png',imgray)
+    imgray = cv2.cvtColor(cv2.imread('/tmp/beryl.png'),cv2.COLOR_BGR2GRAY)
+    #cv2.imwrite('/tmp/imgray.png',imgray)
     ret,thresh = cv2.threshold(imgray,127,255,cv2.THRESH_BINARY)
     #ret,thresh = cv2.threshold(imgray,127,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C)
     #ret, thresh = cv2.adaptiveThreshold(imgray,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,11,2)
     #cv2.imwrite('/tmp/thresh.png',thresh)
-    contours, hierarchy = cv2.findContours(thresh.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-    cv2.imwrite('/tmp/thresh.png',thresh)
-    #contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
-    #cv2.drawContours(im, contours, -1, (255, 255, 0), 3)
-    #cv2.imshow("Keypoints", im)
-    #cv2.waitKey(0)
-    hierarchy = hierarchy.tolist()[0] # converting from ndarry to list
-    boxes = []
-    parent_children = defaultdict(list)
-    for index, contour in enumerate(contours):
-        box = Box(cv2.boundingRect(contour))
-        boxes.append(box)
-        parent_children[hierarchy[index][3]].append(box)
 
-    print "len after beginning;", len(boxes)
+    if name in cache['text']:
+        print "NAME IN CACHE TEXT"
+        xmin, ymin, xmax, ymax = [float(_) for _ in cache['text'][name]]
+        text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) or image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
+        if not text:
+            # pad coordinates by 2 pixels
+            if xmax <= box.width - 2: xmax += 2
+            if xmin >= 2: xmin -= 2
+            if ymin >= 2: ymin -= 2
+            if ymax <= box.height - 2: ymax += 2
+            text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) or image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax])) 
+        print "\ttext:", text
 
-    time_started_merging = datetime.now()
-    for parent in parent_children:
-        #print "parent:", parent
-        children = parent_children[parent]
-        number_of_children = len(children)
-        print "number_of_children:", number_of_children
-        while len(children) > 1:
+        if text == name:
+            found = Box((xmin, ymin, xmax-xmin, ymax-ymin))
+            found.text = text
+
+    if found is None:
+ 
+        contours, hierarchy = cv2.findContours(thresh.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+        cv2.imwrite('/tmp/thresh.png',thresh)
+        #contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
+        #cv2.drawContours(im, contours, -1, (255, 255, 0), 3)
+        #cv2.imshow("Keypoints", im)
+        #cv2.waitKey(0)
+        hierarchy = hierarchy.tolist()[0] # converting from ndarry to list
+        boxes = []
+        parent_children = defaultdict(list)
+        for index, contour in enumerate(contours):
+            box = Box(cv2.boundingRect(contour))
+            boxes.append(box)
+            parent_children[hierarchy[index][3]].append(box)
+
+        print "len after beginning;", len(boxes)
+
+        for parent in parent_children:
+            #print "parent:", parent
+            children = parent_children[parent]
             number_of_children = len(children)
-            nodes = [child.node for child in children]
+            print "number_of_children:", number_of_children
+            while len(children) > 1:
+                number_of_children = len(children)
+                nodes = [child.node for child in children]
 
-            # wow numpy to the rescue!
-            a = argmin(pdist(nodes, 'euclidean'))
-            #n = sqrt(2*number_of_children)
-            ti = triu_indices(number_of_children, 1)
-            box1 = children[ti[0][a]]
-            box2 = children[ti[1][a]]
+                # wow numpy to the rescue!
+                a = argmin(pdist(nodes, 'euclidean'))
+                #n = sqrt(2*number_of_children)
+                ti = triu_indices(number_of_children, 1)
+                box1 = children[ti[0][a]]
+                box2 = children[ti[1][a]]
            
-            new_box = merge_boxes(box1,box2)
-            boxes.append(new_box)
-            children.append(new_box)
-            children.remove(box1)
-            children.remove(box2)
-    print "merging took", (datetime.now()-time_started_merging).total_seconds(), "seconds"
+                new_box = merge_boxes(box1,box2)
+                boxes.append(new_box)
+                children.append(new_box)
+                children.remove(box1)
+                children.remove(box2)
 
-    #print("len after mergin:", len(boxes))
+        #print("len after mergin:", len(boxes))
 
-    #print "boxes:", boxes
-    #boxes.sort(area_of_box) # go from smallest to biggest
-    boxes = sorted(boxes, key=lambda box: box.area)
-    print "sorted boxes by area"
+        #print "boxes:", boxes
+        #boxes.sort(area_of_box) # go from smallest to biggest
+        boxes = sorted(boxes, key=lambda box: box.area)
+        print "sorted boxes by area"
     
-    found = None
-    d = {}
-    minimum_width = 5 * len(name)
-    print "minimum width:", minimum_width
-    print "number of boxes:", len(boxes)
-    for index, box in enumerate(boxes):
-        # ignore if data all one color
+        found = None
+        d = {}
+        minimum_width = 5 * len(name)
+        print "minimum width:", minimum_width
+        print "number of boxes:", len(boxes)
+        for index, box in enumerate(boxes):
+            # ignore if data all one color
 
-        if minimum_width < box.width < 500 and 15 < box.height < 500:
-            print "\tBOX", index, "PASSED",
-            impath = "/tmp/"+str(index)+".png"
-            xmax = box.xmax 
-            xmin = box.xmin 
-            ymax = box.ymax
-            ymin = box.ymin 
-            text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) 
-            if not text:
-                text = image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax])) 
+            if minimum_width < box.width < 500 and 10 < box.height < 500:
+                print "\tBOX", index, "PASSED",
+                impath = "/tmp/"+str(index)+".png"
+                xmax = box.xmax 
+                xmin = box.xmin 
+                ymax = box.ymax
+                ymin = box.ymin 
+                text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) 
                 if not text:
-
-                    # pad coordinates by 2 pixels
-                    if xmax <= box.width - 2: xmax += 2
-                    if xmin >= 2: xmin -= 2
-                    if ymin >= 2: ymin -= 2
-                    if ymax <= box.height - 2: ymax += 2
-
+                    text = image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax])) 
                     if not text:
+
+                        # pad coordinates by 2 pixels
+                        if xmax <= box.width - 2: xmax += 2
+                        if xmin >= 2: xmin -= 2
+                        if ymin >= 2: ymin -= 2
+                        if ymax <= box.height - 2: ymax += 2
+
                         text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) 
                         if not text:
                             text = image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax])) 
-                        #else:
-                        #    cv2.imwrite(impath,thresh[ymin:ymax, xmin:xmax])
-                    #else:
-                    #    cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax]) 
-                #else:
-                #    cv2.imwrite(impath,thresh[ymin:ymax, xmin:xmax]) 
-            #else:
-            #    cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax]) 
- 
-            #if is_there_more_than_one_color(image.getdata()):
-            #or image_to_string(ImageOps.invert(image))
-            print "text:", text
-            if text:
-                box.text = text
-                if text == name:
-                    found = box
-                    break
+                            cv2.imwrite(impath,thresh[ymin:ymax, xmin:xmax])
+                        else:
+                            cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax]) 
+                    else:
+                        cv2.imwrite(impath,thresh[ymin:ymax, xmin:xmax]) 
                 else:
-                    d[text] = box
-        else:
-            print "\tBOX", index, "FAILED",
+                    cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax]) 
+ 
+                #if is_there_more_than_one_color(image.getdata()):
+                #or image_to_string(ImageOps.invert(image))
+                print "text:", text
+                if text:
+                    box.text = text
+                    if text == name:
+                        found = box
+                        write_to_cache = True
+                        break
+                    else:
+                        d[text] = box
+            else:
+                print "\tBOX", index, "FAILED",
 
     if not found:
         if d:
@@ -239,6 +269,12 @@ def click_text(name, notify=True, use_cache=True):
 
     if notify:
         _notify("finished clicking " + text)
+
+    if write_to_cache:
+        with open(path_to_cache_text, "a") as f:
+            f.write("\n"+name+"\t"+str(found.xmin)+"\t"+str(found.ymin)+"\t"+str(found.xmax)+"\t"+str(found.ymax))
+
+    print "click_text took", (datetime.now()-time_started_method).total_seconds(), "seconds"
 
 def click_image(image, notify=True):
 
@@ -371,3 +407,17 @@ def notify(x):
             _notify("finishing " + func_name)
             return result
         return wrapper
+
+def loadCacheTextIfNecessary():
+    global cache
+    print "starting loadCacheTextIfNecessary"
+
+    if "text" not in cache:
+        cache_text = {}
+        with open(path_to_cache_text) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    text, xmin, ymin, xmax, ymax = line.split("\t")
+                    cache_text[text] = [xmin, ymin, xmax, ymax]
+        cache['text'] = cache_text
