@@ -50,6 +50,21 @@ from time import sleep
 def test_method():
     sleep(3)
 ```
- 
+
+## selenium
+Selenium is a great tool but sometimes it's helpful to send a system-level mouse click event to a window.  Here's an example of what to do when a window pops up in Firefox saying that your script is taking too long.
+```
+from beryl import click
+from selenium import webdriver
+
+driver = webdriver.Firefox()
+.
+.
+.
+
+click("Stop script", webdriver=driver)
+
+```
+
 # used by
 [First Draft GIS](http://firstdraftgis.com)
