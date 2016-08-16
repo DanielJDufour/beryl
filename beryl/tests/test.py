@@ -18,6 +18,7 @@ def setUpModule():
     options.add_extension(path_to_chrome_extension)
     options.add_argument("--start-maximized")
     driver = webdriver.Chrome(executable_path=path_to_chrome_driver, chrome_options=options)
+    print "finished setUpModule"
 
 def tearDownModule():
     #global driver
@@ -58,3 +59,18 @@ class TestRecording(unittest.TestCase):
         sleep(2)
 
 
+class TestWindow(unittest.TestCase):
+
+    @record("/tmp/window.gif", delay=5)
+    def test_click_script_timeout_firefox(self):
+        driver = webdriver.Firefox()
+        sleep(1)
+        driver.maximize_window()
+        sleep(1)
+        notify("executing runaway script")
+        driver.execute_script("while(true){console.log('running');}")
+        sleep(1)
+        click("Stop script", webdriver=driver)
+        assert is_text_on_screen("Stop Script") == False
+        notify("stopped script")
+        sleep(1)

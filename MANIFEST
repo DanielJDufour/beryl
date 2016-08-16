@@ -3,3 +3,4 @@ setup.cfg
 setup.py
 beryl/__init__.py
 beryl/recorder.py
+beryl/cache/text.txt

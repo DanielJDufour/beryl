@@ -12,11 +12,12 @@ def convert(input_path, output_path, async=False, silent=True):
     else:
         call(_args)
 
-def start(path_to_video="/tmp/beryl_recording.ogv", silent=True):
+def start(path_to_video="/tmp/beryl_recording.ogv", delay=0, silent=True):
+    #return Popen("sleep " + str(delay) + " && recordmydesktop -o " + path_to_video, shell=True)
     _args = ["recordmydesktop","-o",path_to_video]
     return Popen(_args)
 
-def record(i):
+def record(i, delay=0):
     print "starting record with", i
 
     if hasattr(i, "__call__"):
@@ -24,7 +25,7 @@ def record(i):
             print "_wrapper"
             func_name = i.func_name
             path_to_ogv = "/tmp/" + func_name + ".ogv"
-            p = start(path_to_ogv)
+            p = start(path_to_ogv, delay=delay)
             result = i(*args, **kwargs)
             p.terminate()
             return result
@@ -44,7 +45,7 @@ def record(i):
             print "i:", i
             def inner_wrapper(*args, **kwargs):
                 print "inner_wrapper"
-                p = start(path_to_ogv)
+                p = start(path_to_ogv, delay=delay)
                 result = f(*args, **kwargs)
                 p.terminate()
                 if shouldConvert:
