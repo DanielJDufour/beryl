@@ -66,5 +66,14 @@ click("Stop script", webdriver=driver)
 
 ```
 
+## window_name
+If you know the name of the window, like "Open File", you can pass in the window name to the click method.
+```
+from beryl import click
+
+click("Search", window_name="Open File")
+```
+
 # used by
-[First Draft GIS](http://firstdraftgis.com)
+[First Draft GIS](https://firstdraftgis.com)
+[GeoTIFF.io](https://geotiff.io)

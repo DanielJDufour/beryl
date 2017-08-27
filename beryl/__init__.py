@@ -9,6 +9,7 @@ from os.path import abspath, dirname
 from PIL import Image, ImageOps
 from PIL.PngImagePlugin import PngImageFile
 from processor import does_command_exist, is_command_running, wait_until_command_is_not_running
+from psutil import Process
 from pytesseract import image_to_string
 from scipy.spatial.distance import cdist, pdist
 from subprocess import call, check_output, Popen
@@ -69,7 +70,7 @@ def is_text_on_screen(target, notify=True):
                 return True
     return False
 
-def click_text(name, notify=True, use_cache=True, pid=None, window_id=None, log=False):
+def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id=None, log=False, window_name=None, debug=False):
     global cache
 
 
@@ -79,13 +80,16 @@ def click_text(name, notify=True, use_cache=True, pid=None, window_id=None, log=
     screenshots = []
     window_ids = []
 
-    print "starting click_text with", name
+    print "[beryl] starting click_text with", name
+    if debug: print("\t[beryl] pid: " + str(pid))
+    if debug: print("\t[beryl] pids: " + str(pids))
+    if debug: print("\t[beryl] window_name: " + str(window_name))
     time_started_method = datetime.now()
 
     loadCacheTextIfNecessary()
 
     if notify:
-        _notify("starting to click " + name) 
+        _notify("starting to click " + name)
         sleep(1)
         call(["killall","notify-osd"])
         sleep(0.5)
@@ -93,18 +97,33 @@ def click_text(name, notify=True, use_cache=True, pid=None, window_id=None, log=
     # adds the window_id to the list of window_ids
     # this gives priority to this window
     if window_id:
-        window_ids.add(window_id)
+        window_ids.append(window_id)
 
-    # find all the windows that belong to the process
-    # that has the process id equal to pid
+    pids_as_strings = set()
     if pid:
-        if does_command_exist("wmctrl"):
-            pid = str(pid)
-            for line in check_output(["wmctrl","-lp"]).split("\n"):
-                if pid in line: 
-                    window_id = line.split()[0]
-                    if window_id not in window_ids:
-                        window_ids.append(window_id)
+        pids_as_strings.add(str(pid))
+
+    if pids:
+        for pid in pids:
+            pids_as_strings.add(str(pid))
+
+
+    if does_command_exist("wmctrl"):
+        windows = [ [line.split()[0], line] for line in check_output(["wmctrl","-lp"]).split("\n") if line ]
+    else:
+        windows = None
+
+
+    if windows:
+        for window_id, info in windows:
+            test1 = any(p in info for p in pids_as_strings) if pids_as_strings else True
+            test2 = window_name in info if window_name else True
+            if test1 and test2:
+                if window_id not in window_ids:
+                    window_ids.append(window_id)
+
+    print("wids:", window_ids)
+    raw_input("pausing")
 
     #GET SCREENSHOT
     if window_ids:
@@ -134,7 +153,7 @@ def click_text(name, notify=True, use_cache=True, pid=None, window_id=None, log=
                 if xmin >= 2: xmin -= 2
                 if ymin >= 2: ymin -= 2
                 if ymax <= box.height - 2: ymax += 2
-                text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) or image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax])) 
+                text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) or image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
             #print "\ttext:", text
 
             if text == name:
@@ -175,7 +194,7 @@ def click_text(name, notify=True, use_cache=True, pid=None, window_id=None, log=
                     ti = triu_indices(number_of_children, 1)
                     box1 = children[ti[0][a]]
                     box2 = children[ti[1][a]]
-           
+
                     new_box = merge_boxes(box1,box2)
                     boxes.append(new_box)
                     children.append(new_box)
@@ -187,7 +206,7 @@ def click_text(name, notify=True, use_cache=True, pid=None, window_id=None, log=
             #print "boxes:", boxes
             boxes = sorted(boxes, key=lambda box: box.area)
             print "sorted boxes by area"
-    
+
             d = {}
             minimum_width = 5 * len(name)
             print "minimum width:", minimum_width
@@ -198,13 +217,13 @@ def click_text(name, notify=True, use_cache=True, pid=None, window_id=None, log=
                 if minimum_width < box.width < 500 and 10 < box.height < 500:
                     #print "\tBOX", index, "PASSED",
                     impath = "/tmp/"+str(index_of_box)+".png"
-                    xmax = box.xmax 
-                    xmin = box.xmin 
+                    xmax = box.xmax
+                    xmin = box.xmin
                     ymax = box.ymax
-                    ymin = box.ymin 
-                    text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) 
+                    ymin = box.ymin
+                    text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax]))
                     if not text:
-                        text = image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax])) 
+                        text = image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
                         if not text:
 
                             # pad coordinates by 2 pixels
@@ -213,17 +232,17 @@ def click_text(name, notify=True, use_cache=True, pid=None, window_id=None, log=
                             if ymin >= 2: ymin -= 2
                             if ymax <= box.height - 2: ymax += 2
 
-                            text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) 
+                            text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax]))
                             if not text:
-                                text = image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax])) 
+                                text = image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
                                 cv2.imwrite(impath,thresh[ymin:ymax, xmin:xmax])
                             else:
-                                cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax]) 
+                                cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax])
                         else:
-                            cv2.imwrite(impath,thresh[ymin:ymax, xmin:xmax]) 
+                            cv2.imwrite(impath,thresh[ymin:ymax, xmin:xmax])
                     else:
-                        cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax]) 
- 
+                        cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax])
+
                     #if is_there_more_than_one_color(image.getdata()):
                     #or image_to_string(ImageOps.invert(image))
                     print "text:", text
@@ -251,7 +270,7 @@ def click_text(name, notify=True, use_cache=True, pid=None, window_id=None, log=
     else: print "FOUND", name
 
     _notify("FOUND " + found.text)
- 
+
 
     #CLICK THAT LOCATION
     if found:
@@ -274,7 +293,7 @@ def click_text(name, notify=True, use_cache=True, pid=None, window_id=None, log=
 def click_image(image, notify=True):
 
     if notify:
-        _notify("starting to click " + image) 
+        _notify("starting to click " + image)
 
     if isinstance(image, str) or isinstance(image, unicode):
         template = cv2.imread(image, 0)
@@ -291,7 +310,7 @@ def click_image(image, notify=True):
     source = cv2.imread('/tmp/beryl.png', 0)
 
     points = []
-    w, h = template.shape[::-1] 
+    w, h = template.shape[::-1]
     methods = [cv2.TM_CCOEFF,cv2.TM_CCOEFF_NORMED,cv2.TM_CCORR,cv2.TM_CCORR_NORMED,cv2.TM_SQDIFF,cv2.TM_SQDIFF_NORMED]
     for method in methods:
         # Apply Template Matching
@@ -308,9 +327,9 @@ def click_image(image, notify=True):
         point = (  top_left[0] + (float(w)/2), top_left[1] + (float(h)/2)  )
         points.append(point)
 
-    best_point = sorted([(point, avg_distance(point, points)) for point in points], key=lambda tup: tup[1])[0][0] 
-   
-    click_location(best_point) 
+    best_point = sorted([(point, avg_distance(point, points)) for point in points], key=lambda tup: tup[1])[0][0]
+
+    click_location(best_point)
 
     if notify:
         _notify("finished clicking image")
@@ -338,17 +357,33 @@ def click_location((x,y), notify=False, window_id=None):
 
 
 
-def click(x, notify=False, pid=None, webdriver=None):
+def click(x, notify=False, pid=None, pids=None, webdriver=None, window_name=None, debug=False):
+
+    if debug:
+        print("[beryl] starting click")
+        print("\tpid: " + str(pid))
+        print("\twebdriver: " + str(webdriver))
+        print("\twindow_name: " + str(window_name))
+        print("\tstr(type(webdriver)): " + str(type(webdriver)))
+
     type_as_string = str(type(x))
 
-    if str(type(webdriver)) == "<class 'selenium.webdriver.firefox.webdriver.WebDriver'>":
-        pid = webdriver.binary.process.pid
+    webdriver_type_as_string = str(type(webdriver))
+    if webdriver_type_as_string == "<class 'selenium.webdriver.firefox.webdriver.WebDriver'>":
+        pids = [webdriver.binary.process.pid]
+    elif webdriver_type_as_string == "<class 'selenium.webdriver.chrome.webdriver.WebDriver'>":
+        process = Process(webdriver.service.process.pid)
+        if hasattr(process, "children"):
+            pids = [p.pid for p in process.children()]
+        elif hasattr(process, "get_children"):
+            pids = [p.pid for p in process.get_children()]
+
 
     if isinstance(x, str) or isinstance(x, unicode):
         if x.endswith(".png") or x.endswith(".jpg"):
             click_image(x, notify=notify)
         else:
-            click_text(x, notify=notify, pid=pid)
+            click_text(x, notify=notify, pids=pids, window_name=window_name, debug=debug)
     elif isinstance(x, PngImageFile):
         click_image(x,notify=notify)
     elif isinstance(x, tuple):
@@ -369,5 +404,3 @@ def loadCacheTextIfNecessary():
                     text, xmin, ymin, xmax, ymax = line.split("\t")
                     cache_text[text] = [xmin, ymin, xmax, ymax]
         cache['text'] = cache_text
-
-

@@ -2,5 +2,10 @@
 setup.cfg
 setup.py
 beryl/__init__.py
+beryl/boxerator.py
+beryl/calculator.py
+beryl/notifier.py
+beryl/processor.py
 beryl/recorder.py
+beryl/screenshooter.py
 beryl/cache/text.txt
