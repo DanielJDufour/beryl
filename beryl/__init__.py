@@ -12,6 +12,7 @@ from processor import does_command_exist, is_command_running, wait_until_command
 from psutil import Process
 from pytesseract import image_to_string
 from scipy.spatial.distance import cdist, pdist
+import shlex
 from subprocess import call, check_output, Popen
 from screenshooter import take_a_screenshot
 from time import sleep
@@ -108,11 +109,7 @@ def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id
             pids_as_strings.add(str(pid))
 
 
-    if does_command_exist("wmctrl"):
-        windows = [ [line.split()[0], line] for line in check_output(["wmctrl","-lp"]).split("\n") if line ]
-    else:
-        windows = None
-
+    windows = get_list_of_windows()
 
     if windows:
         for window_id, info in windows:
@@ -123,7 +120,7 @@ def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id
                     window_ids.append(window_id)
 
     print("wids:", window_ids)
-    raw_input("pausing")
+    #raw_input("pausing")
 
     #GET SCREENSHOT
     if window_ids:
@@ -290,6 +287,227 @@ def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id
         print "\nclicked text", found.text
         print "\nclick_text took", (datetime.now()-time_started_method).total_seconds(), "seconds"
 
+
+def find_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id=None, log=False, window_name=None, debug=False):
+    global cache
+
+    found = None
+    write_to_cache = False
+    paths_to_screenshots = []
+    screenshots = []
+    window_ids = []
+
+    print "[beryl] starting find_text with", name
+    if debug: print("\t[beryl] pid: " + str(pid))
+    if debug: print("\t[beryl] pids: " + str(pids))
+    if debug: print("\t[beryl] window_name: " + str(window_name))
+    time_started_method = datetime.now()
+
+    loadCacheTextIfNecessary()
+
+    if notify:
+        _notify("starting to find " + name)
+        sleep(1)
+        call(["killall","notify-osd"])
+        sleep(0.5)
+
+    # adds the window_id to the list of window_ids
+    # this gives priority to this window
+    if window_id:
+        window_ids.append(window_id)
+
+    pids_as_strings = set()
+    if pid:
+        pids_as_strings.add(str(pid))
+
+    if pids:
+        for pid in pids:
+            pids_as_strings.add(str(pid))
+
+
+    windows = get_list_of_windows()
+
+    if windows:
+        for window_id, info in windows:
+            test1 = any(p in info for p in pids_as_strings) if pids_as_strings else True
+            test2 = window_name in info if window_name else True
+            if test1 and test2:
+                if window_id not in window_ids:
+                    window_ids.append(window_id)
+
+    print("wids:", window_ids)
+    #raw_input("pausing")
+
+    #GET SCREENSHOT
+    if window_ids:
+        for window_id in window_ids:
+            paths_to_screenshots.append(take_a_screenshot(window_id=window_id))
+    else:
+        paths_to_screenshots.append(take_a_screenshot())
+    sleep(0.5)
+
+
+    for path_to_screenshot in paths_to_screenshots:
+        imgray = cv2.cvtColor(cv2.imread(path_to_screenshot),cv2.COLOR_BGR2GRAY)
+        ret,thresh = cv2.threshold(imgray,127,255,cv2.THRESH_BINARY)
+        screenshots.append({"imgray":imgray, "thresh": thresh})
+
+    # try to see if we can get lucky and we've seen this before, so we can use cache
+    if name in cache['text']:
+        print "NAME IN CACHE TEXT"
+        for index, dict_of_screenshots in enumerate(screenshots):
+            imgray = dict_of_screenshots['imgray']
+            thresh = dict_of_screenshots['thresh']
+            xmin, ymin, xmax, ymax = [float(_) for _ in cache['text'][name]]
+            text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) or image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
+            if not text:
+                # pad coordinates by 2 pixels
+                if xmax <= box.width - 2: xmax += 2
+                if xmin >= 2: xmin -= 2
+                if ymin >= 2: ymin -= 2
+                if ymax <= box.height - 2: ymax += 2
+                text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) or image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
+            #print "\ttext:", text
+
+            if text == name:
+                found = Box((xmin, ymin, xmax-xmin, ymax-ymin))
+                found.index = index
+                found.text = text
+
+    if found is None:
+        for index_of_screenshot, dict_of_screenshots in enumerate(screenshots):
+            imgray = dict_of_screenshots['imgray']
+            thresh = dict_of_screenshots['thresh']
+            contours, hierarchy = cv2.findContours(thresh.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+            #cv2.imwrite('/tmp/thresh.png',thresh)
+            #contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
+            #cv2.drawContours(im, contours, -1, (255, 255, 0), 3)
+            #cv2.imshow("Keypoints", im)
+            #cv2.waitKey(0)
+            hierarchy = hierarchy.tolist()[0] # converting from ndarry to list
+            boxes = []
+            parent_children = defaultdict(list)
+            for index, contour in enumerate(contours):
+                box = Box(cv2.boundingRect(contour))
+                boxes.append(box)
+                parent_children[hierarchy[index][3]].append(box)
+
+            print "len after beginning;", len(boxes)
+
+            # use nearest neighbor like algorithm to merge boxes
+            for parent in parent_children:
+                children = parent_children[parent]
+                number_of_children = len(children)
+                print "number_of_children:", number_of_children
+                while len(children) > 1:
+                    number_of_children = len(children)
+                    nodes = [child.node for child in children]
+
+                    a = argmin(pdist(nodes, 'euclidean'))
+                    ti = triu_indices(number_of_children, 1)
+                    box1 = children[ti[0][a]]
+                    box2 = children[ti[1][a]]
+
+                    new_box = merge_boxes(box1,box2)
+                    boxes.append(new_box)
+                    children.append(new_box)
+                    children.remove(box1)
+                    children.remove(box2)
+
+            #print("len after mergin:", len(boxes))
+
+            #print "boxes:", boxes
+            boxes = sorted(boxes, key=lambda box: box.area)
+            print "sorted boxes by area"
+
+            d = {}
+            minimum_width = 5 * len(name)
+            print "minimum width:", minimum_width
+            print "number of boxes:", len(boxes)
+            for index_of_box, box in enumerate(boxes):
+                # ignore if data all one color
+
+                if minimum_width < box.width < 500 and 10 < box.height < 500:
+                    #print "\tBOX", index, "PASSED",
+                    impath = "/tmp/"+str(index_of_box)+".png"
+                    xmax = box.xmax
+                    xmin = box.xmin
+                    ymax = box.ymax
+                    ymin = box.ymin
+                    text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax]))
+                    if not text:
+                        text = image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
+                        if not text:
+
+                            # pad coordinates by 2 pixels
+                            if xmax <= box.width - 2: xmax += 2
+                            if xmin >= 2: xmin -= 2
+                            if ymin >= 2: ymin -= 2
+                            if ymax <= box.height - 2: ymax += 2
+
+                            text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax]))
+                            if not text:
+                                text = image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
+                                cv2.imwrite(impath,thresh[ymin:ymax, xmin:xmax])
+                            else:
+                                cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax])
+                        else:
+                            cv2.imwrite(impath,thresh[ymin:ymax, xmin:xmax])
+                    else:
+                        cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax])
+
+                    #if is_there_more_than_one_color(image.getdata()):
+                    #or image_to_string(ImageOps.invert(image))
+                    print "text:", text
+                    if text:
+                        box.text = text
+                        box.index = index_of_screenshot
+                        if text == name:
+                            found = box
+                            write_to_cache = True
+                            break
+                        else:
+                            d[text] = box
+                #else:
+                    #print "\tBOX", index, "FAILED",
+
+    if not found:
+        if d:
+            for text in d:
+                d[text].distance = editdistance.eval(text, name)
+
+            #print "d:", d
+            found = (sorted(d.iteritems(), key=lambda tup:tup[1].distance ) or [None])[0][1]
+        else:
+            found = None
+    else: print "FOUND", name
+
+    _notify("FOUND " + found.text)
+
+    if notify:
+        _notify("finished finding " + found.text)
+
+    if write_to_cache:
+        with open(path_to_cache_text, "a") as f:
+            f.write("\n"+name+"\t"+str(found.xmin)+"\t"+str(found.ymin)+"\t"+str(found.xmax)+"\t"+str(found.ymax))
+    #if log:
+    if True:
+        print "\nfound text", found.text
+        print "\nfound_text took", (datetime.now()-time_started_method).total_seconds(), "seconds"
+
+    return found
+
+#         When  "https://geotiff.io/data/example_4326.tif" into box for "URL to Your GeoTIFF"
+
+def type_text_into_box(text, box_name, debug=True, box_location="under"):
+    print "starting click_box_under_text"
+    found_text = find_text(text)
+    print "[click_box_under_text] found ", found
+    found_boxes = find_boxes()
+    #XXXX
+    # find box that is shortest distance from being under the text
+
+
 def click_image(image, notify=True):
 
     if notify:
@@ -389,7 +607,93 @@ def click(x, notify=False, pid=None, pids=None, webdriver=None, window_name=None
     elif isinstance(x, tuple):
         click_location(x,notify=notify)
 
+def activate_window(window_id=None, window_name=None):
 
+    if not window_id:
+        windows = get_list_of_windows()
+        for wid, info in windows:
+            info_ascii = [character for character in info if ord(character) < 128]
+            if window_name in info_ascii:
+                window_id = wid
+                break
+
+    if does_command_exist("wmctrl"):
+        call(shlex.split("xdotool windowfocus --sync " + str(window_id)))
+
+def get_list_of_windows(debug=True):
+    if debug: print "starting get_list_of_windows"
+    if does_command_exist("wmctrl"):
+        windows = [ [line.split()[0], line] for line in check_output(["wmctrl","-lp"]).split("\n") if line ]
+    else:
+        raise Exception("no ability to get windows")
+    if debug: print "finishing get_list_of_windows"
+    return windows
+
+
+def press_key(key, window_id=None, window_name=None):
+
+    if notify:
+        _notify("pressing " + key)
+
+    if window_name and not window_id:
+        windows = get_list_of_windows()
+        for wid, info in windows:
+            if window_name in info:
+                window_id = wid
+                break
+
+    if does_command_exist("xdotool"):
+
+        # want to make sure not moving mouse one way
+        # while another process is moving it another way
+        wait_until_command_is_not_running("xdotool")
+        if window_id:
+            command = "xdotool key --window '" + str(window_id) + "' " + key
+            print "running command:", command
+            call(shlex.split(command))
+        else:
+            call(shlex.split("xdotool key " + key))
+    else:
+        raise Exception("UH OH! You don't have any software installed that can be used to press enter.  We recommend installing xdotool.")
+
+    if notify:
+        _notify("finishing pressing key " + key)
+
+def press_enter(window_id=None, window_name=None):
+    press_key(key="Return", window_id=window_id, window_name=window_name)
+
+def press_backspace(window_id=None, window_name=None):
+    press_key(key="BackSpace", window_id=window_id, window_name=window_name)
+
+
+def type_text(text, notify=False, window_id=None, window_name=None):
+
+    if notify:
+        _notify("typing text '" + text + "'")
+
+    if window_name and not window_id:
+        windows = get_list_of_windows()
+        for wid, info in windows:
+            if window_name in info:
+                window_id = wid
+                break
+
+    if does_command_exist("xdotool"):
+
+        # want to make sure not moving mouse one way
+        # while another process is moving it another way
+        wait_until_command_is_not_running("xdotool")
+        if window_id:
+            command = "xdotool type --window '" + str(window_id) + "' '" + text + "'"
+            print "running command:", command
+            call(shlex.split(command))
+        else:
+            call(shlex.split("xdotool type '" + text + "'"))
+    else:
+        raise Exception("UH OH! You don't have any software installed that can be used to click a location on your screen.  We recommend installing xdotool.")
+
+    if notify:
+        _notify("finishing typing text")
 
 def loadCacheTextIfNecessary():
     global cache

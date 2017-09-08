@@ -75,5 +75,5 @@ click("Search", window_name="Open File")
 ```
 
 # used by
-[First Draft GIS](https://firstdraftgis.com)
-[GeoTIFF.io](https://geotiff.io)
+- [First Draft GIS](https://firstdraftgis.com)
+- [GeoTIFF.io](https://geotiff.io)
