@@ -2,4 +2,5 @@ editdistance
 numpy
 Pillow
 pytesseract
+pyvirtualdisplay
 scipy
