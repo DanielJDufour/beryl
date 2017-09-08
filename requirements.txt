@@ -1,6 +1,7 @@
 editdistance
 numpy
 Pillow
+psutil
 pytesseract
 pyvirtualdisplay
 selenium
