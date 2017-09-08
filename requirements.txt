@@ -3,4 +3,5 @@ numpy
 Pillow
 pytesseract
 pyvirtualdisplay
+selenium
 scipy
