@@ -13,4 +13,5 @@ setup(
   download_url = 'https://github.com/DanielJDufour/beryl/tarball/download',
   keywords = ['python', 'testing'],
   classifiers = [],
+  install_requires=["editdistance","numpy","Pillow","pytesseract","scipy"]
 )
