@@ -1,3 +1,5 @@
 editdistance
+numpy
 Pillow
 pytesseract
+scipy
