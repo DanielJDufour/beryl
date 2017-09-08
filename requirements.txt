@@ -5,3 +5,4 @@ pytesseract
 pyvirtualdisplay
 selenium
 scipy
+twine
