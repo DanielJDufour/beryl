@@ -34,6 +34,13 @@ path_to_cache_text = path_to_cache_directory + "text.txt"
 global cache
 cache = {}
 
+def find_contours(a, b, c):
+    results = cv2.findContours(a, b, c)
+    number_of_results = len(results)
+    if number_of_results == 2:
+        return results
+    elif number_of_results == 3:
+        return results[1:3]
 
 def is_there_more_than_one_color(data):
     color = data[0]
@@ -60,7 +67,9 @@ def is_text_on_screen(target, notify=True):
     imgray = cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
     #ret,thresh = cv2.threshold(imgray,127,255,0)
     ret,thresh = cv2.threshold(imgray,127,255,cv2.THRESH_BINARY)
-    contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    contours, hierarchy = find_contours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+ 
     for index, contour in enumerate(contours):
         b = Box(cv2.boundingRect(contour))
         if b.width > 10 and b.height > 6:
@@ -136,33 +145,48 @@ def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id
         ret,thresh = cv2.threshold(imgray,127,255,cv2.THRESH_BINARY)
         screenshots.append({"imgray":imgray, "thresh": thresh})
 
+    """
+    disabling cache until can figure out bugs
+    should double check and see if cache is correct before skipping ocr
     # try to see if we can get lucky and we've seen this before, so we can use cache
     if name in cache['text']:
         print "NAME IN CACHE TEXT"
         for index, dict_of_screenshots in enumerate(screenshots):
             imgray = dict_of_screenshots['imgray']
             thresh = dict_of_screenshots['thresh']
-            xmin, ymin, xmax, ymax = [float(_) for _ in cache['text'][name]]
-            text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) or image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
+            xmin, ymin, xmax, ymax = [int(_) for _ in cache['text'][name]]
+
+            try:
+                text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) or image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
+            except Exception as e:
+                print(e.message + " with [ymin, ymax, xmin, xmax] = " + str([ymin, ymax, xmin, xmax]))
+                text = None
+       
             if not text:
                 # pad coordinates by 2 pixels
                 if xmax <= box.width - 2: xmax += 2
                 if xmin >= 2: xmin -= 2
                 if ymin >= 2: ymin -= 2
                 if ymax <= box.height - 2: ymax += 2
-                text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) or image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
+                try:
+                    text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax])) or image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
+                except Exception as e:
+                    print(e.message + " with [ymin, ymax, xmin, xmax] = " + str([ymin, ymax, xmin, xmax]))
+                    text = None
+ 
             #print "\ttext:", text
 
             if text == name:
                 found = Box((xmin, ymin, xmax-xmin, ymax-ymin))
                 found.index = index
                 found.text = text
+    """
 
     if found is None:
         for index_of_screenshot, dict_of_screenshots in enumerate(screenshots):
             imgray = dict_of_screenshots['imgray']
             thresh = dict_of_screenshots['thresh']
-            contours, hierarchy = cv2.findContours(thresh.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+            contours, hierarchy = find_contours(thresh.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             #cv2.imwrite('/tmp/thresh.png',thresh)
             #contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
             #cv2.drawContours(im, contours, -1, (255, 255, 0), 3)
@@ -378,7 +402,7 @@ def find_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id=
         for index_of_screenshot, dict_of_screenshots in enumerate(screenshots):
             imgray = dict_of_screenshots['imgray']
             thresh = dict_of_screenshots['thresh']
-            contours, hierarchy = cv2.findContours(thresh.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+            contours, hierarchy = find_contours(thresh.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             #cv2.imwrite('/tmp/thresh.png',thresh)
             #contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
             #cv2.drawContours(im, contours, -1, (255, 255, 0), 3)
@@ -625,7 +649,7 @@ def get_list_of_windows(debug=True):
     if does_command_exist("wmctrl"):
         windows = [ [line.split()[0], line] for line in check_output(["wmctrl","-lp"]).split("\n") if line ]
     else:
-        raise Exception("no ability to get windows")
+        raise Exception("no ability to get windows. install wmctrl")
     if debug: print "finishing get_list_of_windows"
     return windows
 
