@@ -5,7 +5,7 @@ setup(
   packages = ['beryl'],
   package_dir = {'beryl': 'beryl'},
   package_data = {'beryl': ['__init__.py','recorder.py','cache/text.txt']},
-  version = '1.3',
+  version = '1.4',
   description = 'Makes Writing Tests Super Easy and Quick',
   author = 'Daniel J. Dufour',
   author_email = 'daniel.j.dufour@gmail.com',
@@ -13,5 +13,5 @@ setup(
   download_url = 'https://github.com/DanielJDufour/beryl/tarball/download',
   keywords = ['python', 'testing'],
   classifiers = [],
-  install_requires=["editdistance","numpy","Pillow","psutil","pytesseract","pyvirtualdisplay","scipy","selenium"]
+  install_requires=["editdistance","numpy","opencv-python","Pillow","psutil","pytesseract","pyvirtualdisplay","scipy","selenium"]
 )
