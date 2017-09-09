@@ -1,6 +1,8 @@
 editdistance
 numpy
+opencv-python
 Pillow
+psutil
 pytesseract
 pyvirtualdisplay
 selenium

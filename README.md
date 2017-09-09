@@ -12,7 +12,7 @@ pip install beryl
 # requirements
 On Ubuntu or any system using Apt Package Manager, install the required system-level packages with the following:
 ```
-sudo apt-get install ffmpeg gnome-screenshot recordmydesktop python-opencv tesseract-ocr xdotool
+sudo apt-get install ffmpeg gnome-screenshot notify-osd recordmydesktop python-opencv tesseract-ocr xdotool
 ```
 On any system with PIP installed, install the Python packages with the following:
 ```
