@@ -34,9 +34,10 @@ path_to_cache_text = path_to_cache_directory + "text.txt"
 global cache
 cache = {}
 
-def find_contours(a, b, c):
+def find_contours(a, b, c, debug=True):
     results = cv2.findContours(a, b, c)
     number_of_results = len(results)
+    if debug: print("number_of_results:", number_of_results)
     if number_of_results == 2:
         return results
     elif number_of_results == 3:
@@ -69,7 +70,7 @@ def is_text_on_screen(target, notify=True):
     ret,thresh = cv2.threshold(imgray,127,255,cv2.THRESH_BINARY)
     contours, hierarchy = find_contours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
- 
+
     for index, contour in enumerate(contours):
         b = Box(cv2.boundingRect(contour))
         if b.width > 10 and b.height > 6:
@@ -161,7 +162,7 @@ def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id
             except Exception as e:
                 print(e.message + " with [ymin, ymax, xmin, xmax] = " + str([ymin, ymax, xmin, xmax]))
                 text = None
-       
+
             if not text:
                 # pad coordinates by 2 pixels
                 if xmax <= box.width - 2: xmax += 2
@@ -173,7 +174,7 @@ def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id
                 except Exception as e:
                     print(e.message + " with [ymin, ymax, xmin, xmax] = " + str([ymin, ymax, xmin, xmax]))
                     text = None
- 
+
             #print "\ttext:", text
 
             if text == name:
@@ -206,7 +207,7 @@ def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id
             for parent in parent_children:
                 children = parent_children[parent]
                 number_of_children = len(children)
-                print "number_of_children:", number_of_children
+                #print "number_of_children:", number_of_children
                 while len(children) > 1:
                     number_of_children = len(children)
                     nodes = [child.node for child in children]
@@ -266,7 +267,7 @@ def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id
 
                     #if is_there_more_than_one_color(image.getdata()):
                     #or image_to_string(ImageOps.invert(image))
-                    print "text:", text
+                    #print "text:", text
                     if text:
                         box.text = text
                         box.index = index_of_screenshot
@@ -288,10 +289,16 @@ def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id
             found = (sorted(d.iteritems(), key=lambda tup:tup[1].distance ) or [None])[0][1]
         else:
             found = None
-    else: print "FOUND", name
+    else:
+        print "FOUND", name
 
-    _notify("FOUND " + found.text)
+    if notify:
+        _notify("FOUND " + found.text + " for '" + name + "'")
 
+    if debug:
+        print("xmid", found.xmid)
+        print("ymid", found.ymid)
+        print("window_id:", window_id)
 
     #CLICK THAT LOCATION
     if found:
@@ -301,14 +308,14 @@ def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id
             click_location((found.xmid,found.ymid))
 
     if notify:
-        _notify("finished clicking " + found.text)
+        _notify("finished clicking " + found.text + " for '" + name + "'")
 
     if write_to_cache:
         with open(path_to_cache_text, "a") as f:
             f.write("\n"+name+"\t"+str(found.xmin)+"\t"+str(found.ymin)+"\t"+str(found.xmax)+"\t"+str(found.ymax))
-    #if log:
-    if True:
-        print "\nclicked text", found.text
+
+    if debug:
+        print "\nclicked text", found.text, "for", name
         print "\nclick_text took", (datetime.now()-time_started_method).total_seconds(), "seconds"
 
 
@@ -370,11 +377,15 @@ def find_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id=
         paths_to_screenshots.append(take_a_screenshot())
     sleep(0.5)
 
-
+    if debug: print("path_to_screenshots:", path_to_screenshots)
     for path_to_screenshot in paths_to_screenshots:
-        imgray = cv2.cvtColor(cv2.imread(path_to_screenshot),cv2.COLOR_BGR2GRAY)
-        ret,thresh = cv2.threshold(imgray,127,255,cv2.THRESH_BINARY)
-        screenshots.append({"imgray":imgray, "thresh": thresh})
+        try:
+            im = cv2.imread(path_to_screenshot)
+            imgray = cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
+            ret,thresh = cv2.threshold(imgray,127,255,cv2.THRESH_BINARY)
+            screenshots.append({"imgray":imgray, "thresh": thresh})
+        except Exception as e:
+            print("e:", e)
 
     # try to see if we can get lucky and we've seen this before, so we can use cache
     if name in cache['text']:
@@ -403,97 +414,98 @@ def find_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id=
             imgray = dict_of_screenshots['imgray']
             thresh = dict_of_screenshots['thresh']
             contours, hierarchy = find_contours(thresh.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            #cv2.imwrite('/tmp/thresh.png',thresh)
-            #contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
-            #cv2.drawContours(im, contours, -1, (255, 255, 0), 3)
-            #cv2.imshow("Keypoints", im)
-            #cv2.waitKey(0)
-            hierarchy = hierarchy.tolist()[0] # converting from ndarry to list
-            boxes = []
-            parent_children = defaultdict(list)
-            for index, contour in enumerate(contours):
-                box = Box(cv2.boundingRect(contour))
-                boxes.append(box)
-                parent_children[hierarchy[index][3]].append(box)
+            if len(contours) > 0 and len(hierarchy) > 0:
+                #cv2.imwrite('/tmp/thresh.png',thresh)
+                #contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
+                #cv2.drawContours(im, contours, -1, (255, 255, 0), 3)
+                #cv2.imshow("Keypoints", im)
+                #cv2.waitKey(0)
+                hierarchy = hierarchy.tolist()[0] # converting from ndarry to list
+                boxes = []
+                parent_children = defaultdict(list)
+                for index, contour in enumerate(contours):
+                    box = Box(cv2.boundingRect(contour))
+                    boxes.append(box)
+                    parent_children[hierarchy[index][3]].append(box)
 
-            print "len after beginning;", len(boxes)
+                print "len after beginning;", len(boxes)
 
-            # use nearest neighbor like algorithm to merge boxes
-            for parent in parent_children:
-                children = parent_children[parent]
-                number_of_children = len(children)
-                print "number_of_children:", number_of_children
-                while len(children) > 1:
+                # use nearest neighbor like algorithm to merge boxes
+                for parent in parent_children:
+                    children = parent_children[parent]
                     number_of_children = len(children)
-                    nodes = [child.node for child in children]
+                    #print "number_of_children:", number_of_children
+                    while len(children) > 1:
+                        number_of_children = len(children)
+                        nodes = [child.node for child in children]
 
-                    a = argmin(pdist(nodes, 'euclidean'))
-                    ti = triu_indices(number_of_children, 1)
-                    box1 = children[ti[0][a]]
-                    box2 = children[ti[1][a]]
+                        a = argmin(pdist(nodes, 'euclidean'))
+                        ti = triu_indices(number_of_children, 1)
+                        box1 = children[ti[0][a]]
+                        box2 = children[ti[1][a]]
 
-                    new_box = merge_boxes(box1,box2)
-                    boxes.append(new_box)
-                    children.append(new_box)
-                    children.remove(box1)
-                    children.remove(box2)
+                        new_box = merge_boxes(box1,box2)
+                        boxes.append(new_box)
+                        children.append(new_box)
+                        children.remove(box1)
+                        children.remove(box2)
 
-            #print("len after mergin:", len(boxes))
+                #print("len after mergin:", len(boxes))
 
-            #print "boxes:", boxes
-            boxes = sorted(boxes, key=lambda box: box.area)
-            print "sorted boxes by area"
+                #print "boxes:", boxes
+                boxes = sorted(boxes, key=lambda box: box.area)
+                print "sorted boxes by area"
 
-            d = {}
-            minimum_width = 5 * len(name)
-            print "minimum width:", minimum_width
-            print "number of boxes:", len(boxes)
-            for index_of_box, box in enumerate(boxes):
-                # ignore if data all one color
+                d = {}
+                minimum_width = 5 * len(name)
+                print "minimum width:", minimum_width
+                print "number of boxes:", len(boxes)
+                for index_of_box, box in enumerate(boxes):
+                    # ignore if data all one color
 
-                if minimum_width < box.width < 500 and 10 < box.height < 500:
-                    #print "\tBOX", index, "PASSED",
-                    impath = "/tmp/"+str(index_of_box)+".png"
-                    xmax = box.xmax
-                    xmin = box.xmin
-                    ymax = box.ymax
-                    ymin = box.ymin
-                    text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax]))
-                    if not text:
-                        text = image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
+                    if minimum_width < box.width < 500 and 10 < box.height < 500:
+                        #print "\tBOX", index, "PASSED",
+                        impath = "/tmp/"+str(index_of_box)+".png"
+                        xmax = box.xmax
+                        xmin = box.xmin
+                        ymax = box.ymax
+                        ymin = box.ymin
+                        text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax]))
                         if not text:
-
-                            # pad coordinates by 2 pixels
-                            if xmax <= box.width - 2: xmax += 2
-                            if xmin >= 2: xmin -= 2
-                            if ymin >= 2: ymin -= 2
-                            if ymax <= box.height - 2: ymax += 2
-
-                            text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax]))
+                            text = image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
                             if not text:
-                                text = image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
-                                cv2.imwrite(impath,thresh[ymin:ymax, xmin:xmax])
-                            else:
-                                cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax])
-                        else:
-                            cv2.imwrite(impath,thresh[ymin:ymax, xmin:xmax])
-                    else:
-                        cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax])
 
-                    #if is_there_more_than_one_color(image.getdata()):
-                    #or image_to_string(ImageOps.invert(image))
-                    print "text:", text
-                    if text:
-                        box.text = text
-                        box.index = index_of_screenshot
-                        if text == name:
-                            found = box
-                            write_to_cache = True
-                            break
+                                # pad coordinates by 2 pixels
+                                if xmax <= box.width - 2: xmax += 2
+                                if xmin >= 2: xmin -= 2
+                                if ymin >= 2: ymin -= 2
+                                if ymax <= box.height - 2: ymax += 2
+
+                                text = image_to_string(Image.fromarray(imgray[ymin:ymax, xmin:xmax]))
+                                if not text:
+                                    text = image_to_string(Image.fromarray(thresh[ymin:ymax, xmin:xmax]))
+                                    cv2.imwrite(impath,thresh[ymin:ymax, xmin:xmax])
+                                else:
+                                    cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax])
+                            else:
+                                cv2.imwrite(impath,thresh[ymin:ymax, xmin:xmax])
                         else:
-                            d[text] = box
-                #else:
-                    #print "\tBOX", index, "FAILED",
+                            cv2.imwrite(impath,imgray[ymin:ymax, xmin:xmax])
+
+                        #if is_there_more_than_one_color(image.getdata()):
+                        #or image_to_string(ImageOps.invert(image))
+                        print "text:", text
+                        if text:
+                            box.text = text
+                            box.index = index_of_screenshot
+                            if text == name:
+                                found = box
+                                write_to_cache = True
+                                break
+                            else:
+                                d[text] = box
+                    #else:
+                        #print "\tBOX", index, "FAILED",
 
     if not found:
         if d:
@@ -576,10 +588,12 @@ def click_image(image, notify=True):
     if notify:
         _notify("finished clicking image")
 
-def click_location((x,y), notify=False, window_id=None):
+def click_location((x,y), notify=False, window_id=None, debug=True):
 
     if notify:
         _notify("clicking at " + str(x) + " " + str(y))
+
+    window_id = str(window_id)
 
     if does_command_exist("xdotool"):
 
@@ -587,10 +601,17 @@ def click_location((x,y), notify=False, window_id=None):
         # while another process is moving it another way
         wait_until_command_is_not_running("xdotool")
         if window_id:
-            _args = ["xdotool","mousemove","--window",str(window_id), str(x),str(y),"click","--window",str(window_id),"1"]
+            call(shlex.split("xdotool windowfocus " + window_id))
+            call(shlex.split("xdotool windowactivate " + window_id))
+            # can't use window param for click because Chrome doesn't recognize click with it
+            _args = ["xdotool","mousemove","--sync","--window", window_id, str(x),str(y),"click","--repeat", "2", "1"]
         else:
-            _args = ["xdotool","mousemove",str(x),str(y),"click","1"]
+            _args = ["xdotool","mousemove","--sync",str(x),str(y),"click","1"]
+        if debug:
+            print("_args:", _args)
+            print("command:", " ".join(_args))
         call(_args)
+        #raw_input("PAUSED")
     else:
         raise Exception("UH OH! You don't have any software installed that can be used to click a location on your screen.  We recommend installing xdotool.")
 

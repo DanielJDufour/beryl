@@ -5,6 +5,7 @@ Pillow
 psutil
 pytesseract
 pyvirtualdisplay
+scandir
 selenium
 scipy
 twine
