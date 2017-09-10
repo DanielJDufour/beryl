@@ -5,7 +5,7 @@ setup(
   packages = ['beryl'],
   package_dir = {'beryl': 'beryl'},
   package_data = {'beryl': ['__init__.py','recorder.py','cache/text.txt']},
-  version = '1.6',
+  version = '1.7',
   description = 'Makes Writing Tests Super Easy and Quick',
   author = 'Daniel J. Dufour',
   author_email = 'daniel.j.dufour@gmail.com',
