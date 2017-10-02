@@ -1,9 +1,10 @@
 import cv2, editdistance, numpy
-from boxerator import merge_boxes, Box
+from boxerator import merge_boxes, rect_distance, Box
 from collections import defaultdict
 from datetime import datetime
 from numpy import amin, argmin, asarray, triu_indices
 import numpy as np
+from math import floor
 from notifier import notify, _notify
 from os.path import abspath, dirname
 from PIL import Image, ImageOps
@@ -11,7 +12,7 @@ from PIL.PngImagePlugin import PngImageFile
 from processor import does_command_exist, is_command_running, wait_until_command_is_not_running
 from psutil import Process
 from pytesseract import image_to_string
-from scipy.spatial.distance import cdist, pdist
+from scipy.spatial.distance import cdist, pdist, squareform
 import shlex
 from subprocess import call, check_output, Popen
 from screenshooter import take_a_screenshot
@@ -33,6 +34,8 @@ path_to_cache_text = path_to_cache_directory + "text.txt"
 # maybe need to train on an image before search for it
 global cache
 cache = {}
+
+tessdata_dir_config = '--tessdata-dir "/tmp/tesseract-ocr/tessdata/"'
 
 def find_contours(a, b, c, debug=True):
     results = cv2.findContours(a, b, c)
@@ -80,6 +83,11 @@ def is_text_on_screen(target, notify=True):
             if target in text.decode("utf-8"):
                 return True
     return False
+
+def show_image(image, name):
+    path_to_image = '/tmp/' + name + ".png"
+    cv2.imwrite(path_to_image, image)
+    Popen(["shotwell", path_to_image])
 
 def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id=None, log=False, window_name=None, debug=False):
     global cache
@@ -135,16 +143,36 @@ def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id
     #GET SCREENSHOT
     if window_ids:
         for window_id in window_ids:
-            paths_to_screenshots.append(take_a_screenshot(window_id=window_id))
+            paths_to_screenshots.append(take_a_screenshot(window_id=window_id, debug=True))
     else:
-        paths_to_screenshots.append(take_a_screenshot())
+        paths_to_screenshots.append(take_a_screenshot(debug=True))
     sleep(0.5)
 
 
-    for path_to_screenshot in paths_to_screenshots:
-        imgray = cv2.cvtColor(cv2.imread(path_to_screenshot),cv2.COLOR_BGR2GRAY)
-        ret,thresh = cv2.threshold(imgray,127,255,cv2.THRESH_BINARY)
-        screenshots.append({"imgray":imgray, "thresh": thresh})
+    for index, path_to_screenshot in enumerate(paths_to_screenshots):
+
+        original = cv2.imread(path_to_screenshot)
+
+        # double size of image for clarity
+        resized = cv2.resize(original, (0, 0), fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+
+        imgray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+        #show_image(imgray, "imgray_large_" + str(index))
+
+        ret, thresh = cv2.threshold(imgray, 127, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+        #show_image(thresh, "thresh_large_" + str(index))
+
+        #downsize image to original size
+        imgray = cv2.resize(imgray, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+        thresh = cv2.resize(thresh, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+
+        #show_image(imgray, "imgray_originalsize_" + str(index))
+        #show_image(thresh, "thresh_originalsize_" + str(index))
+
+        screenshots.append({"imgray":imgray, "thresh": thresh, "original": original})
+
+
+    #raw_input("showed screenshots")
 
     """
     disabling cache until can figure out bugs
@@ -186,13 +214,14 @@ def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id
     if found is None:
         for index_of_screenshot, dict_of_screenshots in enumerate(screenshots):
             imgray = dict_of_screenshots['imgray']
+            original = dict_of_screenshots['original']
             thresh = dict_of_screenshots['thresh']
             contours, hierarchy = find_contours(thresh.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            #cv2.imwrite('/tmp/thresh.png',thresh)
-            #contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
-            #cv2.drawContours(im, contours, -1, (255, 255, 0), 3)
-            #cv2.imshow("Keypoints", im)
-            #cv2.waitKey(0)
+            if debug:
+                im_with_contours = imgray.copy()
+                # should be saving the pictures
+                im_with_contours = cv2.drawContours(original, contours, -1, (0, 255, 0), 3)
+                #show_image(im_with_contours, "contours_" + str(index_of_screenshot))
             hierarchy = hierarchy.tolist()[0] # converting from ndarry to list
             boxes = []
             parent_children = defaultdict(list)
@@ -208,21 +237,74 @@ def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id
                 children = parent_children[parent]
                 number_of_children = len(children)
                 #print "number_of_children:", number_of_children
-                while len(children) > 1:
-                    number_of_children = len(children)
-                    nodes = [child.node for child in children]
 
-                    a = argmin(pdist(nodes, 'euclidean'))
-                    ti = triu_indices(number_of_children, 1)
-                    box1 = children[ti[0][a]]
-                    box2 = children[ti[1][a]]
+                bboxes = [child.bbox for child in children]
+
+                if number_of_children > 1:
+                    distance_matrix = squareform(pdist(bboxes, rect_distance))
+                    np.fill_diagonal(distance_matrix, np.inf)
+                    # distance matrix is one dimensional like  [   0.  240.  233.  219.  243.  236.  222.    2.   16.    9.]
+                    #print "distance_matrix:", distance_matrix
+                    #print "shape:", distance_matrix.shape
+
+                while len(children) > 1:
+                    #if debug: print "len(children):", len(children)
+                    #if debug: print "len(bboxes):", len(bboxes)
+                    index1, index2 = sorted(list(np.unravel_index(distance_matrix.argmin(), distance_matrix.shape)))
+                    #print "index1:", index1
+                    #print "index2:", index2
+
+                    box1 = children[index1]
+                    box2 = children[index2]
 
                     new_box = merge_boxes(box1,box2)
                     boxes.append(new_box)
-                    children.append(new_box)
-                    children.remove(box1)
-                    children.remove(box2)
 
+                    # delete row and column for second box
+                    distance_matrix = np.delete(distance_matrix, (index2), axis=0)
+                    distance_matrix = np.delete(distance_matrix, (index2), axis=1)
+
+                    # delete row and column for first box
+                    distance_matrix = np.delete(distance_matrix, (index1), axis=0)
+                    distance_matrix = np.delete(distance_matrix, (index1), axis=1)
+
+                    children.remove(box2)
+                    children.remove(box1)
+
+                    # update bboxes
+                    del bboxes[index2]
+                    del bboxes[index1]
+
+                    children.append(new_box)
+
+                    if len(children) > 1:
+
+                        new_distances = cdist([new_box.bbox], bboxes, "euclidean")
+                        #print "calculated new dist with ", [new_box.bbox]
+
+                        #print "new_distances:", new_distances
+                        #print "distance_matrix.shape:", distance_matrix.shape
+                        #print "new_distances.shape:", new_distances.shape
+                        #print "\n" * 4
+
+                        # add new distances column to distance matrix
+                        distance_matrix = np.append(distance_matrix, new_distances, axis=0) #row
+                        #print "appended row"
+                        #print "distance_matrix.shape:", distance_matrix.shape
+                        #print "\n" * 4
+                        new_distances = np.append(new_distances, np.array([[np.inf]]), axis=1)
+                        swapped = np.swapaxes(new_distances, 0, 1)
+                        #print "swapped.shape:", swapped.shape
+                        #print "\n" * 4
+                        distance_matrix = np.append(distance_matrix, swapped, axis=1) #column
+
+                        #print "appended col"
+
+                        # wait to add bboxes because don't want to include results for new_box with itself
+                        bboxes.append(new_box.bbox)
+
+
+            #raw_input("updated")
             #print("len after mergin:", len(boxes))
 
             #print "boxes:", boxes
@@ -235,6 +317,7 @@ def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id
             print "number of boxes:", len(boxes)
             for index_of_box, box in enumerate(boxes):
                 # ignore if data all one color
+                #if debug: print ".",
 
                 if minimum_width < box.width < 500 and 10 < box.height < 500:
                     #print "\tBOX", index, "PASSED",
@@ -282,11 +365,19 @@ def click_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id
 
     if not found:
         if d:
+            min_distance = None
             for text in d:
+                distance = editdistance.eval(text, name)
+                if min_distance is None:
+                    min_distance = distance
+                elif distance < min_distance:
+                    min_distance = distance
                 d[text].distance = editdistance.eval(text, name)
-
-            #print "d:", d
-            found = (sorted(d.iteritems(), key=lambda tup:tup[1].distance ) or [None])[0][1]
+            print("min_distance:", min_distance)
+            options = list(d.iteritems())
+            top_options = [option for option in options if option[1].distance == min_distance]
+            print("top_options:", top_options)
+            found = top_options[0][1]
         else:
             found = None
     else:
@@ -435,9 +526,11 @@ def find_text(name, notify=True, use_cache=True, pid=None, pids=None, window_id=
                     children = parent_children[parent]
                     number_of_children = len(children)
                     #print "number_of_children:", number_of_children
-                    while len(children) > 1:
+                    while number_of_children > 1:
+                        if debug: print "number_of_children is greater than 1"
                         number_of_children = len(children)
                         nodes = [child.node for child in children]
+                        if debug: print "nodes:", nodes
 
                         a = argmin(pdist(nodes, 'euclidean'))
                         ti = triu_indices(number_of_children, 1)

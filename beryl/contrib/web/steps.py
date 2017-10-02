@@ -21,7 +21,8 @@ def open_file_in_browser(context, filename):
     driver = context.driver if hasattr(context, "driver") else None
     window_name = "Open File"
 
-    command = 'find / -name "example_4326.tif" 2>&1 | grep -v "Permission denied"'
+    # we use -print and -quit, so that we get the first match only
+    command = 'find / -name "' + filename + '" -print -quit 2>&1 | grep -v "Permission denied"'
 
     path_to_file = check_output(command, shell=True).strip().split(sep)
 
@@ -30,7 +31,12 @@ def open_file_in_browser(context, filename):
     print("path_to_file:", path_to_file)
 
 
-    for part in path_to_file:
+    for index, part in enumerate(path_to_file):
         activate_window(window_name=window_name)
         print "trying to click part " + part
+        if index == 0:
+            if part == "home":
+                part = part.title()
         click(part, webdriver=driver, debug=True, window_name=window_name)
+
+    click("Open", webdriver=driver, debug=True, window_name=window_name)
