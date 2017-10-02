@@ -30,7 +30,7 @@ def record(i, delay=0):
             p.terminate()
             return result
         return wrapper
- 
+
     elif isinstance(i, str) or isinstance(i, unicode):
         _format = i.split(".")[-1]
         if _format == "ogv":
@@ -39,7 +39,7 @@ def record(i, delay=0):
         else:
             shouldConvert = True
             path_to_ogv = "/tmp/" + "".join([choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for x in range(4)]) + ".ogv"
- 
+
         def outer_wrapper(f):
             print "outer_wrapper with", f
             print "i:", i
@@ -54,4 +54,3 @@ def record(i, delay=0):
                 return result
             return inner_wrapper
         return outer_wrapper
-
